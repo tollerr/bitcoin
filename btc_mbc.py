@@ -1,5 +1,6 @@
 
 import time 
+from datetime import datetime
 import urllib2
 import ast  
 import mechanize 
@@ -54,9 +55,12 @@ def applyRates(btc_to_usd, btc_to_brl, usd_to_brl, pos):
 
     #btc_cash out 2.99
 
-def getRealValue(url,pos,fx):
 
-    data=ast.literal_eval(fetch_data(url))
+def getMBOrderBook(url):
+    return ast.literal_eval(fetch_data(url))
+
+def getValueForPosition(order_book,pos,fx):
+    data=order_book   
     qty=cash=net=total=0
     mb_ex_fee=.993 #Brazil Execution Fee
     fx_spread=0.01 #fx spread by the bank
@@ -70,51 +74,73 @@ def getRealValue(url,pos,fx):
         net=qt*pr*mb_ex_fee
         total+=net
         #print "qty:%f, pr:%f, g:%f, net:%f total:(%f,%f)"%(qt,pr,pr*qt,net,qty,total)
-    print "%f\t%f"%(qty,total)
+    #print "%f\t%f"%(qty,total)
     to_bank = total- 2.99-(0.0199*total) #mb cash fee R$2.99 + 1.99%
     transfer_us = to_bank - 115-0.011 * to_bank
-    in_us=transfer_us/fx-(fx*fx_spread)
+    in_us=transfer_us/(fx+(fx*fx_spread))
     coinbase=in_us-0.0149*in_us
-    print "total:%f, in_itau:%f, transfer:%f, in_us:%f, coin:%f"%(total, to_bank, transfer_us, in_us, coinbase)
+    #print "total:%f, in_itau:%f, transfer:%f, in_us:%f, coin:%f/(%f)"%(total, to_bank, transfer_us, in_us, coinbase, coinbase/pos)
 
     return coinbase
 
 
 
+def run_it_all():
+    #Get Coinbase Data
+    (btc_to_usd, btc_to_brl, usd_to_brl, eth_to_usd)=getCoinbaseData(coin_url) 
+
+    #get bitcoin from mbc
+    mbc_rate=getMBitcoinData(mbc_url)
+
+    #get litecoin data
+    #ltc_rate=getMBitcoinData(ltc_url)
+
+    print "mbc_rate:%f"%(mbc_rate)
+    pos=1.875
+    rate=usd_to_brl
+    arbitrage=mbc_rate-btc_to_brl
+
+    mb_ob=getMBOrderBook(order_book)
+
+    real_value=getValueForPosition(mb_ob, pos, rate)
+    real_arbitrage=real_value-pos*btc_to_usd
+
+    print ' --- Bitcoin'
+    print'......... arbitrage (br-us):%f BRL, %f USD'%(arbitrage, arbitrage/rate)
+    print 'Arbitrage ratio (arb/mbc):%f%%'%(arbitrage/mbc_rate*100)
+    print "Opportunity %f btc: %fBRL, %f USD"%(pos, arbitrage*pos, arbitrage/rate*pos)
+    print "After fees %f btc: %f USD, %f USD"%(pos, real_value, real_arbitrage)
+    print "Arbitrage ratio (arb/mbc):%f%%"%(real_arbitrage/btc_to_usd*100)
+    #print ' for position:%f , %f BRL, %f USD,  (%f bitcoins)'%(pos, arbitrage*pos, arbitrage/rate*pos, arbitrage/rate*pos/btc_to_usd)
+    #bitcoin position
+    pos=1.879
+    eth_pos=8
+    btc_pr=2661
+    eth_pr=252.18
 
 
+    #print"%s - %s"%(i, coin(i)) btc. to usd=float(coin ("btc. to usd')
 
-#Get Coinbase Data
-(btc_to_usd, btc_to_brl, usd_to_brl, eth_to_usd)=getCoinbaseData(coin_url) 
+    eth_pnl=(eth_pos*eth_to_usd)-(eth_pos*eth_pr)
+    btc_pnl=(pos*btc_to_usd)-(pos*btc_pr)
+    print 'PNL: %f (btc), %f (eth), Total:%f usd'%(btc_pnl, eth_pnl, btc_pnl+eth_pnl)
 
-#get bitcoin from mbc
-mbc_rate=getMBitcoinData(mbc_url)
+    with open("btc.out","a") as fh:
+        fh.write("\n%s,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f"%(str(datetime.now()),btc_to_usd, btc_to_brl, mbc_rate, mbc_rate/rate, rate, arbitrage, arbitrage, rate, pos, arbitrage*pos, arbitrage/rate*pos, real_value, real_arbitrage, btc_pnl, eth_pnl, btc_pnl+eth_pnl))
 
-#get litecoin data
-#ltc_rate=getMBitcoinData(ltc_url)
+    fh.close 
 
-pos=1
-rate=usd_to_brl
-arbitrage=mbc_rate-btc_to_brl
+while True:
+    run_it_all()
+    time.sleep(30)
 
-real_value=getRealValue(order_book, pos, rate)
-real_arbitrage=real_value-pos*btc_to_usd
 
-print ' --- Bitcoin'
-print'......... arbitrage (br-us):%f BRL, %f USD'%(arbitrage, arbitrage/rate)
-print 'Arbitrage ratio (arb/mbc):%f%%'%(arbitrage/mbc_rate*100)
-print "Opportunity %f btc: %fBRL, %f USD"%(pos, arbitrage*pos, arbitrage/rate*pos)
-print "After fees %f btc: %f USD, %f USD"%(pos, real_value, real_arbitrage)
-print "Arbitrage ration (arb/mbc):%f%%"%(real_arbitrage/btc_to_usd*100)
-#print ' for position:%f , %f BRL, %f USD,  (%f bitcoins)'%(pos, arbitrage*pos, arbitrage/rate*pos, arbitrage/rate*pos/btc_to_usd)
-#bitcoin position
-pos=1.879
-eth_pos=8
-btc_pr=2661
-eth_pr=252.18
+# print "*"*10
+# print "----+++-------+++--------+++"
+# print "Pos\tBTC(US)\tBr\tFX\tARB\t+Fee\tPNL"
 
-#print"%s - %s"%(i, coin(i)) btc. to usd=float(coin ("btc. to usd')
-
-eth_pnl=(eth_pos*eth_to_usd)-(eth_pos*eth_pr)
-btc_pnl=(pos*btc_to_usd)-(pos*btc_pr)
-print 'PNL: %f (btc), %f (eth), Total:%f usd'%(btc_pnl, eth_pnl, btc_pnl+eth_pnl)
+# po=[1,1.875]
+# for p in po:
+#     rv=getValueForPosition(mb_ob,p,rate)
+#     ra=rv - pos*btc_to_usd
+#     print "%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t"%(p,p*btc_to_usd,p*mbc_rate,rate,p*(mbc_rate-btc_to_brl),rv-p*btc_to_usd,0)
